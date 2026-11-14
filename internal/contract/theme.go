@@ -15,6 +15,13 @@ const (
 
 var themeSupport = support{Major: 0, Minor: 1}
 
+// themeFields lists the fields of knowhere.theme 0.1 (for pruning newer minors).
+var themeFields = func() *fieldSet {
+	top := keep("schema", "schemaVersion", "name", "seedColor", "colorScheme", "cornerRadius", "font", "density", "extensions")
+	top["wallpaper"] = &fieldSet{fields: keep("ref")}
+	return &fieldSet{fields: top}
+}()
+
 // DefaultFonts is the proposed bundled font allowlist (open question Q-06).
 var DefaultFonts = map[string]bool{"inter": true, "roboto": true, "roboto-flex": true, "jetbrains-mono": true}
 
@@ -53,7 +60,7 @@ func ParseTheme(data []byte, opt ThemeOptions) (*Theme, error) {
 		return nil, newErr(CodeInvalidDocument, "%v", err)
 	}
 	var t Theme
-	if err := validateDocument(value, ThemeSchema, contracts.ThemeSchemaFile, themeSupport, &t); err != nil {
+	if err := validateDocument(value, ThemeSchema, contracts.ThemeSchemaFile, themeSupport, themeFields, &t); err != nil {
 		return nil, err
 	}
 	e := &Error{Code: CodeInvalidValue}

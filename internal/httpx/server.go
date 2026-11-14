@@ -21,8 +21,10 @@ var DefaultLimits = Limits{
 	ReadTimeout:       15 * time.Second,
 	WriteTimeout:      30 * time.Second,
 	IdleTimeout:       60 * time.Second,
-	MaxHeaderBytes:    16 << 10,
-	MaxBodyBytes:      1 << 20,
+	// net/http allows MaxHeaderBytes + 4096 bytes of header data, so 12 KiB
+	// here gives the intended effective limit of 16 KiB.
+	MaxHeaderBytes: 12 << 10,
+	MaxBodyBytes:   1 << 20,
 }
 
 // NewServer returns an http.Server with the given limits applied.

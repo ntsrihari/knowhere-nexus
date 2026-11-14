@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -223,5 +224,21 @@ func TestAnnouncerStyleHash(t *testing.T) {
 	const reported = "'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='"
 	if got := styleAttrSources(); got != "'unsafe-hashes' "+reported {
 		t.Fatalf("style-src-attr = %s", got)
+	}
+}
+
+// ST-2: the complete Content-Security-Policy, exactly. Any change to the
+// policy must be made here deliberately.
+func TestCSPSnapshot(t *testing.T) {
+	a, _ := newApp(t, testConfig(t, ""))
+	sum := sha256.Sum256([]byte("boot()"))
+	scriptHash := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	want := "default-src 'self'; script-src 'self' " + scriptHash + "; style-src 'self'; " +
+		"style-src-attr 'unsafe-hashes' 'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='; " +
+		"img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'none'; " +
+		"frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'"
+	got := do(t, a.Handler(), http.MethodGet, "/healthz").Header().Get("Content-Security-Policy")
+	if got != want {
+		t.Fatalf("CSP changed:\n got %s\nwant %s", got, want)
 	}
 }

@@ -47,7 +47,7 @@ M1 builds the base every later milestone relies on. **It has no authentication, 
 | M1-10 | **Catalog loader at startup.** Load and validate the catalog file. If it's missing or invalid, start with an empty catalog and log the reason (never crash, per A-17). The `/api/v1/apps` endpoint comes in M4 | M1-09 |
 | M1-11 | **Frontend scaffold.** SvelteKit with `adapter-static` and an SPA fallback. `kit.csp` in hash mode, so there's no `'unsafe-inline'`. TypeScript strict, `svelte-check`, Vitest. A placeholder page only. Fonts self-hosted, no CDN | P-03 |
 | M1-12 | **Static serving.** Embedded `embed.FS`. SPA fallback to `index.html` for non-`/api` GET requests. Long-lived immutable caching for hashed assets, `no-cache` for `index.html`. No directory listings. Path cleaning | P-03 |
-| M1-13 | **Container image.** Multi-stage build to `gcr.io/distroless/static:nonroot`, `CGO_ENABLED=0`, pinned by digest. Runs with a read-only root filesystem and `/data` as the only writable volume. `HEALTHCHECK` uses `nexus healthcheck` | — |
+| M1-13 | **Container image.** Multi-stage build to `gcr.io/distroless/static:nonroot`, `CGO_ENABLED=0`, pinned by digest. Runs with a read-only root filesystem and `/var/lib/nexus` as the only writable volume. `HEALTHCHECK` uses `nexus healthcheck` | — |
 | M1-14 | **CI (GitHub Actions).** `go vet`, `staticcheck`, `go test -race`, `govulncheck`, `npm ci`, `svelte-check`, Vitest, `npm audit --audit-level=high`, gitleaks, image build. Push to GHCR **only on tags**. Actions pinned by commit SHA. Dependabot for Go, npm and Actions | — |
 | M1-15 | **Developer docs.** Fill in the `CLAUDE.md` commands section; a README with the local run steps (fake config, no real services) | — |
 
@@ -55,6 +55,13 @@ M1 builds the base every later milestone relies on. **It has no authentication, 
 - **Go toolchain 1.27.4** (`go 1.27.0`, `toolchain go1.27.4`). Go 1.24 is past end of support. 1.27.4 is a patch release from 2 Nov 2026, adopted despite the two-week rule because it carries fixes. Analysis tools run with `GOTOOLCHAIN` set to the project toolchain.
 - **govulncheck can't run in the development sandbox** (`vuln.go.dev` is blocked by its network policy). It runs in CI.
 - **Container (M1-13):** image 24.8 MB; idle memory about 7.5 MiB in the hardened run. In the development sandbox the build stages can't verify TLS through the sandbox's egress proxy, so local verification used a derived Dockerfile (kept outside the repo) that adds that CA to the build stages only. The final image layers were confirmed identical in content (no sandbox CA). CI builds the real `Dockerfile` unchanged.
+- **Independent review (M1):** a subagent review found no critical issues and six confirmed findings, all fixed:
+  1. Newer-minor contract validation relaxed required fields and matched keys case-insensitively. Documents are now pruned to exact-case known fields, then validated strictly.
+  2. A `?`, `#` or `%` in `dataDir` could redirect the SQLite file outside the data directory. The DSN is now URL-escaped, and these characters are rejected in config paths.
+  3. CI granted `packages: write` to every image build. Publishing is now a separate job, run only for `v*` tags.
+  4. The effective header limit was about 20 KiB. It is now exactly 16 KiB, and the test brackets it.
+  5. The CSP is now snapshot-tested as a whole.
+  6. A static gate stops unreviewed outbound-network code outside allowlisted files, complementing the runtime guard.
 - **SvelteKit 3** (3.1.0) is used. Kit 3 takes its configuration through the `sveltekit()` Vite plugin (no `svelte.config.js`) and replaces `$lib` with Node subpath imports (`#lib/...ts`).
 - **npm `legacy-peer-deps`** is set in `frontend/.npmrc`. npm 10's resolver crashes on this dependency set with `Cannot read properties of null (reading 'edgesOut')`. Every peer is pinned explicitly instead.
 - **CSP hashes are computed in Go, not with `kit.csp`.** SvelteKit's SPA fallback page has an inline bootstrap script. Go hashes the inline scripts of the embedded `index.html` at startup and adds them to the `script-src` header, so the header stays the single source of the policy and has no `'unsafe-inline'`.

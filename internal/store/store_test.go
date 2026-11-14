@@ -125,3 +125,27 @@ func TestMigrationSequenceEnforced(t *testing.T) {
 		t.Fatalf("failed migration was recorded: version %d", v)
 	}
 }
+
+func TestOpenWithURLSpecialCharactersInPath(t *testing.T) {
+	ctx := context.Background()
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "d#x?y=1%20z")
+	db, err := Open(ctx, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE t (x INTEGER)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, FileName+"-wal")); err != nil {
+		t.Fatalf("WAL not inside the data directory: %v", err)
+	}
+	db.Close()
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(dir) {
+		t.Fatalf("files escaped the data directory: %v", entries)
+	}
+}

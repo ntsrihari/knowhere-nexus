@@ -134,8 +134,8 @@ func (f *File) validate(baseDir string) (*Config, error) {
 			add("%s: required", field)
 			return ""
 		}
-		if strings.ContainsRune(v, 0) {
-			add("%s: invalid path", field)
+		if strings.ContainsAny(v, "\x00?#%") {
+			add("%s: must not contain NUL, '?', '#' or '%%'", field)
 			return ""
 		}
 		if !filepath.IsAbs(v) {

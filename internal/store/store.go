@@ -41,7 +41,7 @@ func Open(ctx context.Context, dataDir string) (*DB, error) {
 	q.Add("_pragma", "busy_timeout(5000)")
 	q.Add("_pragma", "foreign_keys(1)")
 	q.Add("_pragma", "synchronous(NORMAL)")
-	db, err := sql.Open("sqlite", "file:"+path+"?"+q.Encode())
+	db, err := sql.Open("sqlite", dsn(path, q))
 	if err != nil {
 		return nil, fmt.Errorf("store: open: %w", err)
 	}
@@ -59,6 +59,13 @@ func Open(ctx context.Context, dataDir string) (*DB, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// dsn builds the SQLite URI with the path escaped, so characters such as
+// '?', '#' or '%' in the data directory cannot redirect the database file.
+func dsn(path string, q url.Values) string {
+	u := url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}
+	return u.String()
 }
 
 func prepareDir(dir string) error {

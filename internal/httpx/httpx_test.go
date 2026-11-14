@@ -173,22 +173,34 @@ func startServer(t *testing.T, l Limits) string {
 	return ln.Addr().String()
 }
 
-func TestOversizedHeadersRejected(t *testing.T) {
-	addr := startServer(t, DefaultLimits)
+// headerStatus sends one request whose header block totals about size bytes.
+func headerStatus(t *testing.T, addr string, size int) int {
+	t.Helper()
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
-	huge := strings.Repeat("a", 32<<10)
-	_, _ = io.WriteString(conn, "GET / HTTP/1.1\r\nHost: x\r\nX-Big: "+huge+"\r\n\r\n")
+	prefix := "GET / HTTP/1.1\r\nHost: x\r\nX-Big: "
+	pad := size - len(prefix) - 4
+	_, _ = io.WriteString(conn, prefix+strings.Repeat("a", pad)+"\r\n\r\n")
 	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.StatusCode != http.StatusRequestHeaderFieldsTooLarge {
-		t.Fatalf("status %d, want 431", resp.StatusCode)
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+// ST-6: the effective header limit is 16 KiB.
+func TestHeaderLimitIs16KiB(t *testing.T) {
+	addr := startServer(t, DefaultLimits)
+	if got := headerStatus(t, addr, 15<<10); got != http.StatusOK {
+		t.Errorf("15 KiB headers: %d, want 200", got)
+	}
+	if got := headerStatus(t, addr, 17<<10); got != http.StatusRequestHeaderFieldsTooLarge {
+		t.Errorf("17 KiB headers: %d, want 431", got)
 	}
 }
 

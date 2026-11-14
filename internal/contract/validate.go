@@ -56,9 +56,60 @@ func loadSchemas() error {
 // SelfCheck compiles every embedded schema; used at startup.
 func SelfCheck() error { return loadSchemas() }
 
+// fieldSet describes the known (exact-case) fields of an object and, for
+// nested objects, how to prune them. Used only for newer-MINOR documents.
+type fieldSet struct {
+	fields map[string]*fieldSet // nil value: keep as-is (scalar or opaque)
+	items  *fieldSet            // for arrays of objects
+}
+
+// prune drops unknown keys (exact-case match only) from v following fs.
+func prune(v any, fs *fieldSet) any {
+	if fs == nil {
+		return v
+	}
+	switch t := v.(type) {
+	case map[string]any:
+		if fs.fields == nil {
+			return t
+		}
+		out := make(map[string]any, len(t))
+		for k, val := range t {
+			sub, known := fs.fields[k]
+			if !known {
+				continue
+			}
+			out[k] = prune(val, sub)
+		}
+		return out
+	case []any:
+		if fs.items == nil {
+			return t
+		}
+		out := make([]any, len(t))
+		for i, val := range t {
+			out[i] = prune(val, fs.items)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func keep(names ...string) map[string]*fieldSet {
+	m := make(map[string]*fieldSet, len(names))
+	for _, n := range names {
+		m[n] = nil
+	}
+	return m
+}
+
 // validateDocument applies the shared pipeline: schema name, version mode
-// (R-17), JSON Schema validation, then decoding into out.
-func validateDocument(value any, schemaName, schemaFile string, sup support, out any) error {
+// (R-17), JSON Schema validation, then strict decoding into out.
+// A newer-MINOR document first has its unknown fields removed (exact-case);
+// everything Nexus knows about is then validated exactly as for a known
+// version, so required fields and types are never relaxed.
+func validateDocument(value any, schemaName, schemaFile string, sup support, known *fieldSet, out any) error {
 	m, ok := value.(map[string]any)
 	if !ok {
 		return newErr(CodeInvalidDocument, "document must be an object")
@@ -78,34 +129,18 @@ func validateDocument(value any, schemaName, schemaFile string, sup support, out
 	if err := loadSchemas(); err != nil {
 		return fmt.Errorf("contract schemas: %w", err)
 	}
-	sch := schemas[schemaFile]
-
+	if md == lenient {
+		value = prune(value, known)
+	}
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return newErr(CodeInvalidDocument, "cannot encode document")
 	}
-	if md == lenient {
-		// Newer MINOR: decode leniently (unknown fields dropped), then
-		// validate what Nexus understands.
-		if err := json.Unmarshal(raw, out); err != nil {
-			return newErr(CodeSchemaViolation, "%v", err)
-		}
-		pruned, err := json.Marshal(out)
-		if err != nil {
-			return newErr(CodeInvalidDocument, "cannot encode document")
-		}
-		inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(pruned))
-		if err != nil {
-			return newErr(CodeInvalidDocument, "cannot decode document")
-		}
-		return schemaCheck(sch, inst)
-	}
-
 	inst, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
 	if err != nil {
 		return newErr(CodeInvalidDocument, "cannot decode document")
 	}
-	if err := schemaCheck(sch, inst); err != nil {
+	if err := schemaCheck(schemas[schemaFile], inst); err != nil {
 		return err
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))

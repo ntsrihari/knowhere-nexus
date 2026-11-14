@@ -19,6 +19,18 @@ const (
 
 var catalogSupport = support{Major: 0, Minor: 1}
 
+// catalogFields lists the fields of knowhere.catalog 0.1 (for pruning newer
+// minors). extensions are kept opaque.
+var catalogFields = func() *fieldSet {
+	top := keep("schema", "schemaVersion", "revision", "source", "updatedAt")
+	app := keep("id", "name", "kind", "description", "audience", "extensions")
+	app["icon"] = &fieldSet{fields: keep("builtin")}
+	app["launch"] = &fieldSet{fields: keep("route")}
+	app["health"] = &fieldSet{fields: keep("containers")}
+	top["apps"] = &fieldSet{items: &fieldSet{fields: app}}
+	return &fieldSet{fields: top}
+}()
+
 // Catalog is a validated knowhere.catalog document.
 type Catalog struct {
 	Schema        string `json:"schema"`
@@ -74,7 +86,7 @@ func ParseCatalog(data []byte, opt CatalogOptions) (*Catalog, error) {
 		return nil, newErr(CodeInvalidDocument, "%v", err)
 	}
 	var c Catalog
-	if err := validateDocument(value, CatalogSchema, contracts.CatalogSchemaFile, catalogSupport, &c); err != nil {
+	if err := validateDocument(value, CatalogSchema, contracts.CatalogSchemaFile, catalogSupport, catalogFields, &c); err != nil {
 		return nil, err
 	}
 	if err := c.semantic(opt); err != nil {
