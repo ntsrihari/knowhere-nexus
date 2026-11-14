@@ -30,7 +30,17 @@ Nexus is the dashboard and API at `knowhere/`, part of the Knowhere platform. Th
 - Jellyfin auth; Jellyfin admin = Nexus admin — S-03, S-04.
 
 ## Commands
-None yet. Add build, test and lint commands here once the skeleton (T-1.x) exists.
+```bash
+make frontend-deps        # once: npm ci in frontend/
+make check                # gofmt + vet + staticcheck + go test -race + svelte-check + Vitest
+make frontend build       # embed the SvelteKit build and build bin/nexus
+make e2e                  # browser check: no CSP violations or console errors
+make fuzz                 # contract parser fuzzing (ST-8)
+make image container-test # build the image and run the hardened container test (ST-12)
+```
+- Every test package's `TestMain` blocks outbound network (ST-11). Use `testutil.LocalClient()` for servers under test.
+- New routes go through `authz.Registry.Handle` with a role, and must be added to `TestRouteTable` in `internal/app` (ST-1).
+- In this development sandbox, Docker build stages can't verify TLS through the egress proxy, and `vuln.go.dev` is blocked. See the M1 notes in `docs/TASKS.md`.
 
 ## Related components (separate repos; don't implement them here)
 Collector (store), Milano (Android app), Prism (themes). See ARCHITECTURE.md §7 for the interfaces.

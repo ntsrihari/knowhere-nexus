@@ -1,0 +1,26 @@
+# Example Nexus configuration (non-secret). Relative paths are resolved
+# against this file's directory. Unknown keys are rejected.
+
+# Address inside the container. Publish no host port: Caddy reaches Nexus on
+# a private Docker network (R-15).
+listen: 0.0.0.0:8480
+
+# The exact origin users load Nexus from (https; http only for localhost).
+publicOrigin: https://knowhere.example.ts.net
+
+# Caddy's address(es) on the private network, single hosts only. Used from M2
+# for client-IP and identity-header trust (R-15).
+trustedProxies:
+  - 172.30.0.2
+
+# Writable data directory (mode 0700, owned by the Nexus user).
+dataDir: /var/lib/nexus
+
+# Launcher catalog (knowhere.catalog 0.1.0). Missing or invalid → empty catalog.
+catalogPath: /etc/nexus/catalog.yaml
+
+# Secrets file: mode 0600 or 0400, owned by the Nexus user (UID 65532 in the image).
+secretsFile: /etc/nexus/secrets.yaml
+
+# debug | info | warn | error
+logLevel: info

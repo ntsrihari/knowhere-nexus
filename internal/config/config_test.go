@@ -118,3 +118,13 @@ func TestLoadFile(t *testing.T) {
 		t.Error("directory accepted")
 	}
 }
+
+func TestExampleConfigParses(t *testing.T) {
+	c, err := Load("../../examples/config.yaml")
+	if err != nil {
+		t.Fatalf("examples/config.yaml: %v", err)
+	}
+	if c.Listen != "0.0.0.0:8480" || len(c.TrustedProxies) != 1 {
+		t.Fatalf("unexpected example values: %+v", c)
+	}
+}
