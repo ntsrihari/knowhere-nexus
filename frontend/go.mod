@@ -2,4 +2,4 @@
 // into the frontend and node_modules. The frontend is not Go code.
 module github.com/ntsrihari/knowhere-nexus/frontend-ignore
 
-go 1.24.0
+go 1.27.0

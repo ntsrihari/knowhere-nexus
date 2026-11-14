@@ -52,6 +52,8 @@ M1 builds the base every later milestone relies on. **It has no authentication, 
 | M1-15 | **Developer docs.** Fill in the `CLAUDE.md` commands section; a README with the local run steps (fake config, no real services) | — |
 
 #### M1 implementation notes (decisions made within A-25)
+- **Go toolchain 1.27.4** (`go 1.27.0`, `toolchain go1.27.4`). Go 1.24 is past end of support. 1.27.4 is a patch release from 2 Nov 2026, adopted despite the two-week rule because it carries fixes. Analysis tools run with `GOTOOLCHAIN` set to the project toolchain.
+- **govulncheck can't run in the development sandbox** (`vuln.go.dev` is blocked by its network policy). It runs in CI.
 - **SvelteKit 3** (3.1.0) is used. Kit 3 takes its configuration through the `sveltekit()` Vite plugin (no `svelte.config.js`) and replaces `$lib` with Node subpath imports (`#lib/...ts`).
 - **npm `legacy-peer-deps`** is set in `frontend/.npmrc`. npm 10's resolver crashes on this dependency set with `Cannot read properties of null (reading 'edgesOut')`. Every peer is pinned explicitly instead.
 - **CSP hashes are computed in Go, not with `kit.csp`.** SvelteKit's SPA fallback page has an inline bootstrap script. Go hashes the inline scripts of the embedded `index.html` at startup and adds them to the `script-src` header, so the header stays the single source of the policy and has no `'unsafe-inline'`.

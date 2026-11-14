@@ -12,6 +12,9 @@ IMAGE   ?= knowhere-nexus:local
 
 STATICCHECK_VERSION := v0.8.2
 GOVULNCHECK_VERSION := v1.9.0
+# Build analysis tools with the project toolchain (go.mod), not the tool's
+# own minimum Go version, so they understand the project's language version.
+GO_TOOLCHAIN := $(shell sed -n 's/^toolchain //p' go.mod)
 
 .PHONY: all frontend-deps frontend frontend-check build test test-race fuzz lint vuln check e2e image container-test
 
@@ -48,10 +51,10 @@ fuzz:
 lint:
 	@out="$$(gofmt -l cmd internal contracts)"; if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	go vet ./...
-	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
 
 vuln:
-	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	GOTOOLCHAIN=$(GO_TOOLCHAIN) go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 	cd frontend && npm audit --audit-level=high
 
 check: lint test-race frontend-check
