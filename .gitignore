@@ -1,0 +1,23 @@
+# Secrets and local state — never commit
+secrets*
+!secrets.example.yaml
+*.db
+*.db-wal
+*.db-shm
+/data/
+.env
+.env.*
+
+# Build output
+/bin/
+/dist/
+/frontend/build/
+/frontend/.svelte-kit/
+/internal/webui/dist/*
+!/internal/webui/dist/.gitkeep
+
+# Dependencies and tooling
+/frontend/node_modules/
+/frontend/test-results/
+coverage.out
+*.test
