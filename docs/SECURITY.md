@@ -76,7 +76,9 @@ Phase 1 keeps Nexus **read-only towards Docker and the host [OWNER A-03, A-04]**
 - Never in config, the image, the repo, logs, responses or audit.
 
 ### 4.7 Web [REC]
-- CSP without `'unsafe-inline'` (SvelteKit `kit.csp` hash mode): `default-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'`.
+- CSP without `'unsafe-inline'`: `default-src 'self'; script-src 'self' 'sha256-<index.html inline bootstrap>'; style-src 'self'; style-src-attr 'unsafe-hashes' 'sha256-<SvelteKit route-announcer style>'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-src 'none'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'`.
+  - Script hashes are computed by Go at startup from the embedded `index.html`.
+  - `style-src-attr` allows only the exact, fixed style attribute of SvelteKit's accessibility live region (a constant in `internal/app`). Any other inline style is blocked. `make e2e` fails if a SvelteKit upgrade changes it.
 - Also: `nosniff`, `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`, `Permissions-Policy` that disables unused features.
 - HTTP server limits: `ReadHeaderTimeout` 5 s, `ReadTimeout` 15 s, `IdleTimeout` 60 s, 16 KB of headers, 1 MB request bodies (catalog reload reads the file, not the body).
 

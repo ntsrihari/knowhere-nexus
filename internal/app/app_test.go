@@ -15,6 +15,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/ntsrihari/knowhere-nexus/internal/authz"
@@ -51,7 +52,7 @@ func testConfig(t *testing.T, catalogPath string) *config.Config {
 func newApp(t *testing.T, cfg *config.Config) (*App, *bytes.Buffer) {
 	t.Helper()
 	var logs bytes.Buffer
-	a, err := New(context.Background(), cfg, slog.New(slog.NewJSONHandler(&logs, nil)), Options{})
+	a, err := New(context.Background(), cfg, slog.New(slog.NewJSONHandler(&logs, nil)), Options{Static: testSite})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,5 +190,38 @@ func TestServeAndGracefulShutdown(t *testing.T) {
 func TestNetworkGuardActive(t *testing.T) {
 	if _, err := http.Get("http://example.com/"); err == nil {
 		t.Fatal("outbound request succeeded; network guard not active")
+	}
+}
+
+var testSite = fstest.MapFS{
+	"index.html":                    {Data: []byte(`<!doctype html><html><body><div><script>boot()</script></div></body></html>`)},
+	"_app/immutable/entry/start.js": {Data: []byte("export{}")},
+}
+
+func TestFrontendServedWithStrictCSP(t *testing.T) {
+	a, _ := newApp(t, testConfig(t, ""))
+	for _, p := range []string{"/", "/some/client/route", "/_app/immutable/entry/start.js", "/healthz", "/api/x"} {
+		rr := do(t, a.Handler(), http.MethodGet, p)
+		csp := rr.Header().Get("Content-Security-Policy")
+		if strings.Contains(csp, "unsafe-inline") || strings.Contains(csp, "unsafe-eval") || !strings.Contains(csp, "'sha256-") {
+			t.Errorf("%s: CSP %q", p, csp)
+		}
+		if !strings.Contains(csp, "frame-ancestors 'none'") || !strings.Contains(csp, "object-src 'none'") {
+			t.Errorf("%s: CSP missing directives: %q", p, csp)
+		}
+	}
+	if rr := do(t, a.Handler(), http.MethodGet, "/some/client/route"); rr.Code != 200 || !strings.Contains(rr.Body.String(), "boot()") {
+		t.Fatalf("SPA fallback: %d", rr.Code)
+	}
+	if rr := do(t, a.Handler(), http.MethodPost, "/"); rr.Code != 405 {
+		t.Fatalf("POST /: %d", rr.Code)
+	}
+}
+
+// The hash Chromium reports for SvelteKit's announcer style attribute.
+func TestAnnouncerStyleHash(t *testing.T) {
+	const reported = "'sha256-S8qMpvofolR8Mpjy4kQvEm7m1q8clzU4dfDH0AmvZjo='"
+	if got := styleAttrSources(); got != "'unsafe-hashes' "+reported {
+		t.Fatalf("style-src-attr = %s", got)
 	}
 }

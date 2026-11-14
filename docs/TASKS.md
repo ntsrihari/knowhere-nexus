@@ -29,7 +29,7 @@ Tags: **[OWNER]** owner-approved · **[SPEC]** · **[REC]** pending approval · 
 Phase 1 delivers: Jellyfin sign-in with 7-day revocable sessions; a Home screen with a launcher from the server catalog; system, storage and service health for everyone, with detail for admins; a household theme; an audit log; and graceful degradation. Docker and the host are read-only.
 
 ### M1 — Skeleton, contracts and CI
-**Progress:** ✅ M1-01 · ✅ M1-02 · ✅ M1-03 · ✅ M1-04 · ✅ M1-05 · ✅ M1-06 · ✅ M1-07 · ✅ M1-08 · ✅ M1-09 · ✅ M1-10 · ✅ M1-11
+**Progress:** ✅ M1-01 · ✅ M1-02 · ✅ M1-03 · ✅ M1-04 · ✅ M1-05 · ✅ M1-06 · ✅ M1-07 · ✅ M1-08 · ✅ M1-09 · ✅ M1-10 · ✅ M1-11 · ✅ M1-12
 
 M1 builds the base every later milestone relies on. **It has no authentication, no integrations and no host or Docker access.** The only route is `/healthz`, plus the static SPA.
 
@@ -55,6 +55,7 @@ M1 builds the base every later milestone relies on. **It has no authentication, 
 - **SvelteKit 3** (3.1.0) is used. Kit 3 takes its configuration through the `sveltekit()` Vite plugin (no `svelte.config.js`) and replaces `$lib` with Node subpath imports (`#lib/...ts`).
 - **npm `legacy-peer-deps`** is set in `frontend/.npmrc`. npm 10's resolver crashes on this dependency set with `Cannot read properties of null (reading 'edgesOut')`. Every peer is pinned explicitly instead.
 - **CSP hashes are computed in Go, not with `kit.csp`.** SvelteKit's SPA fallback page has an inline bootstrap script. Go hashes the inline scripts of the embedded `index.html` at startup and adds them to the `script-src` header, so the header stays the single source of the policy and has no `'unsafe-inline'`.
+- **`style-src-attr` hash for SvelteKit's route announcer.** The browser check found that SvelteKit renders a fixed inline `style` attribute on its screen-reader live region. Rather than allow `'unsafe-inline'`, the CSP allows exactly that string by hash with `'unsafe-hashes'`. A unit test pins the hash to the one Chromium reported.
 - **No web fonts in M1.** A system font stack is used; bundled fonts arrive with the theme runtime (M5, Q-06).
 - **Known npm advisories at M1, none applicable and none high:** GHSA-jf9x-2fg2-hx4w (adapter-static: Vercel route config only); GHSA-mw6w-2fmv-pvw3 (kit: adapter-node `reroute` only); GHSA-gcqx-w48m-w2h4 (deepmerge via vite-plugin-svelte, build-time, no fix). The fixed Kit and adapter versions are under two weeks old; Dependabot will propose them. CI fails on high or critical.
 
