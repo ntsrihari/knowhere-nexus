@@ -1,5 +1,6 @@
 # Secrets and local state — never commit
-secrets*
+secrets*.yaml
+secrets*.yml
 !secrets.example.yaml
 *.db
 *.db-wal
