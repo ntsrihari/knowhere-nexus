@@ -1,0 +1,57 @@
+# Example Phase 1 launcher catalog (knowhere.catalog 0.1.0, docs/CONTRACTS.md §1).
+# Service and container names follow ntsrihari/knowhere-homelab-archive @ d4166a5.
+# Every launch.route is null: no reverse-proxy route is authorized yet (B-07),
+# so the launcher shows these entries as unavailable to open.
+schema: knowhere.catalog
+schemaVersion: 0.1.0
+revision: 1
+source: file
+updatedAt: 2026-11-14T00:00:00Z
+apps:
+  - id: jellyfin
+    name: Jellyfin
+    kind: server
+    description: Films and shows
+    icon: { builtin: jellyfin }
+    audience: all
+    launch: { route: null }
+    health: { containers: [jellyfin] }
+  - id: navidrome
+    name: Navidrome
+    kind: server
+    description: Music streaming
+    icon: { builtin: navidrome }
+    audience: all
+    launch: { route: null }
+    health: { containers: [navidrome] }
+  - id: immich
+    name: Immich
+    kind: server
+    description: Photos and videos
+    icon: { builtin: immich }
+    audience: all
+    launch: { route: null }
+    health: { containers: [immich_server, immich_machine_learning, immich_redis, immich_postgres] }
+  - id: home-assistant
+    name: Home Assistant
+    kind: server
+    icon: { builtin: home-assistant }
+    audience: all
+    launch: { route: null }
+    health: { containers: [homeassistant] }
+  - id: pihole
+    name: Pi-hole
+    kind: server
+    description: Network DNS filtering
+    icon: { builtin: pihole }
+    audience: admin
+    launch: { route: null }
+    health: { containers: [pihole] }
+  - id: portainer
+    name: Portainer
+    kind: server
+    description: Container management
+    icon: { builtin: portainer }
+    audience: admin
+    launch: { route: null }
+    health: { containers: [portainer] }

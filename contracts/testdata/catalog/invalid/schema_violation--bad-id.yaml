@@ -1,0 +1,18 @@
+schema: knowhere.catalog
+schemaVersion: 0.1.0
+revision: 1
+source: file
+updatedAt: 2026-11-14T00:00:00Z
+apps:
+  - id: Jelly_Fin
+    name: Jellyfin
+    kind: server
+    description: Films and shows
+    icon: { builtin: jellyfin }
+    audience: all
+    launch:
+      route: null
+    health:
+      containers: [jellyfin]
+    extensions:
+      collector: {}
