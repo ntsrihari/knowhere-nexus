@@ -29,7 +29,7 @@ Tags: **[OWNER]** owner-approved · **[SPEC]** · **[REC]** pending approval · 
 Phase 1 delivers: Jellyfin sign-in with 7-day revocable sessions; a Home screen with a launcher from the server catalog; system, storage and service health for everyone, with detail for admins; a household theme; an audit log; and graceful degradation. Docker and the host are read-only.
 
 ### M1 — Skeleton, contracts and CI
-**Progress:** ✅ M1-01 · ✅ M1-02 · ✅ M1-03 · ✅ M1-04 · ✅ M1-05 · ✅ M1-06 · ✅ M1-07
+**Progress:** ✅ M1-01 · ✅ M1-02 · ✅ M1-03 · ✅ M1-04 · ✅ M1-05 · ✅ M1-06 · ✅ M1-07 · ✅ M1-08
 
 M1 builds the base every later milestone relies on. **It has no authentication, no integrations and no host or Docker access.** The only route is `/healthz`, plus the static SPA.
 
