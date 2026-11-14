@@ -1,0 +1,13 @@
+# gitleaks configuration: default rules plus allowlists for test fixtures that
+# deliberately contain fake, generated or sentinel values.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures with fake values"
+paths = [
+  '''internal/secrets/secrets_test\.go''',
+  '''internal/app/app_test\.go''',
+  '''cmd/nexus/serve_test\.go''',
+  '''frontend/package-lock\.json''',
+]
