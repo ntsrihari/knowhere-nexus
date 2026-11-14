@@ -12,7 +12,7 @@ Nexus is the dashboard and API at `knowhere/`, part of the Knowhere platform. Th
 | docs/CONTRACTS.md | Versioned catalog and theme contracts |
 
 ## Current state
-**M1 approved (A-25), in progress on `feat/m1-foundation`.** Work beyond M1 needs separate approval. Owner-approved decisions are tagged [OWNER] in DECISIONS.md; target repo is `ntsrihari/knowhere-nexus` (A-13).
+**M1 complete on `feat/m1-foundation` (A-25).** Work beyond M1 needs separate approval. Owner-approved decisions are tagged [OWNER] in DECISIONS.md; target repo is `ntsrihari/knowhere-nexus` (A-13).
 
 ## Rules for working on Nexus
 1. **Don't invent requirements.** Every feature must trace to the Platform Plan or the brief (IDs F-xx, NF-xx, S-xx). Anything else is a recommendation, marked **[REC]**, and needs approval.
