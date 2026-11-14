@@ -29,7 +29,7 @@ Tags: **[OWNER]** owner-approved · **[SPEC]** · **[REC]** pending approval · 
 Phase 1 delivers: Jellyfin sign-in with 7-day revocable sessions; a Home screen with a launcher from the server catalog; system, storage and service health for everyone, with detail for admins; a household theme; an audit log; and graceful degradation. Docker and the host are read-only.
 
 ### M1 — Skeleton, contracts and CI
-**Progress:** ✅ M1-01 · ✅ M1-02 · ✅ M1-03 · ✅ M1-04 · ✅ M1-05 · ✅ M1-06 · ✅ M1-07 · ✅ M1-08 · ✅ M1-09 · ✅ M1-10 · ✅ M1-11 · ✅ M1-12
+**Progress:** ✅ M1-01 · ✅ M1-02 · ✅ M1-03 · ✅ M1-04 · ✅ M1-05 · ✅ M1-06 · ✅ M1-07 · ✅ M1-08 · ✅ M1-09 · ✅ M1-10 · ✅ M1-11 · ✅ M1-12 · ✅ M1-13
 
 M1 builds the base every later milestone relies on. **It has no authentication, no integrations and no host or Docker access.** The only route is `/healthz`, plus the static SPA.
 
@@ -54,6 +54,7 @@ M1 builds the base every later milestone relies on. **It has no authentication, 
 #### M1 implementation notes (decisions made within A-25)
 - **Go toolchain 1.27.4** (`go 1.27.0`, `toolchain go1.27.4`). Go 1.24 is past end of support. 1.27.4 is a patch release from 2 Nov 2026, adopted despite the two-week rule because it carries fixes. Analysis tools run with `GOTOOLCHAIN` set to the project toolchain.
 - **govulncheck can't run in the development sandbox** (`vuln.go.dev` is blocked by its network policy). It runs in CI.
+- **Container (M1-13):** image 24.8 MB; idle memory about 7.5 MiB in the hardened run. In the development sandbox the build stages can't verify TLS through the sandbox's egress proxy, so local verification used a derived Dockerfile (kept outside the repo) that adds that CA to the build stages only. The final image layers were confirmed identical in content (no sandbox CA). CI builds the real `Dockerfile` unchanged.
 - **SvelteKit 3** (3.1.0) is used. Kit 3 takes its configuration through the `sveltekit()` Vite plugin (no `svelte.config.js`) and replaces `$lib` with Node subpath imports (`#lib/...ts`).
 - **npm `legacy-peer-deps`** is set in `frontend/.npmrc`. npm 10's resolver crashes on this dependency set with `Cannot read properties of null (reading 'edgesOut')`. Every peer is pinned explicitly instead.
 - **CSP hashes are computed in Go, not with `kit.csp`.** SvelteKit's SPA fallback page has an inline bootstrap script. Go hashes the inline scripts of the embedded `index.html` at startup and adds them to the `script-src` header, so the header stays the single source of the policy and has no `'unsafe-inline'`.
