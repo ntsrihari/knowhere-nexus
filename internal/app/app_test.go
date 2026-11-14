@@ -1,0 +1,193 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/ntsrihari/knowhere-nexus/internal/authz"
+	"github.com/ntsrihari/knowhere-nexus/internal/config"
+	"github.com/ntsrihari/knowhere-nexus/internal/testutil"
+)
+
+func TestMain(m *testing.M) { testutil.RunWithoutNetwork(m) }
+
+const secretKeyByte = 0x5a
+
+// testConfig writes a secrets file and returns a config for a temp data dir.
+func testConfig(t *testing.T, catalogPath string) *config.Config {
+	t.Helper()
+	dir := t.TempDir()
+	sec := filepath.Join(dir, "secrets.yaml")
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{secretKeyByte}, 32))
+	if err := os.WriteFile(sec, []byte("sessionEncryptionKey: "+key+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if catalogPath == "" {
+		catalogPath, _ = filepath.Abs("../../examples/catalog.yaml")
+	}
+	return &config.Config{
+		Listen:       "127.0.0.1:0",
+		PublicOrigin: "http://localhost:8480",
+		DataDir:      filepath.Join(dir, "data"),
+		CatalogPath:  catalogPath,
+		SecretsFile:  sec,
+		LogLevel:     slog.LevelInfo,
+	}
+}
+
+func newApp(t *testing.T, cfg *config.Config) (*App, *bytes.Buffer) {
+	t.Helper()
+	var logs bytes.Buffer
+	a, err := New(context.Background(), cfg, slog.New(slog.NewJSONHandler(&logs, nil)), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Close() })
+	return a, &logs
+}
+
+// ST-1: the complete permission table. Any route added later must be added
+// here with its role, or this test fails.
+func TestRouteTable(t *testing.T) {
+	a, _ := newApp(t, testConfig(t, ""))
+	want := []authz.Info{
+		{Pattern: "/", Methods: []string{"GET"}, Role: authz.Public},
+		{Pattern: "/api/", Methods: allMethods, Role: authz.Public},
+		{Pattern: "/healthz", Methods: []string{"GET"}, Role: authz.Public},
+	}
+	if got := a.Routes(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("route table changed:\n got %+v\nwant %+v", got, want)
+	}
+}
+
+func do(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest(method, path, nil))
+	return rr
+}
+
+func TestHealthzAndAPINotFound(t *testing.T) {
+	a, _ := newApp(t, testConfig(t, ""))
+	rr := do(t, a.Handler(), http.MethodGet, "/healthz")
+	if rr.Code != 200 || strings.TrimSpace(rr.Body.String()) != `{"status":"ok"}` {
+		t.Fatalf("healthz: %d %s", rr.Code, rr.Body.String())
+	}
+	for _, m := range allMethods {
+		rr := do(t, a.Handler(), m, "/api/anything/here")
+		if rr.Code != 404 {
+			t.Errorf("%s /api/anything: %d", m, rr.Code)
+			continue
+		}
+		if m == http.MethodHead {
+			continue
+		}
+		var env struct{ Error struct{ Code string } }
+		if err := json.Unmarshal(rr.Body.Bytes(), &env); err != nil || env.Error.Code != "not_found" {
+			t.Errorf("%s: envelope %s", m, rr.Body.String())
+		}
+	}
+	if rr := do(t, a.Handler(), http.MethodPost, "/healthz"); rr.Code != 405 {
+		t.Errorf("POST /healthz: %d", rr.Code)
+	}
+}
+
+func TestCatalogLoadedOrEmpty(t *testing.T) {
+	a, _ := newApp(t, testConfig(t, ""))
+	if a.Catalog().Get().Revision != 1 {
+		t.Fatal("example catalog not loaded")
+	}
+	bad := filepath.Join(t.TempDir(), "bad.yaml")
+	if err := os.WriteFile(bad, []byte("not: [valid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b, logs := newApp(t, testConfig(t, bad))
+	if b.Catalog().Get().Revision != 0 || !strings.Contains(logs.String(), "empty catalog") {
+		t.Fatalf("invalid catalog should start empty; logs %s", logs.String())
+	}
+}
+
+func TestStartupRefusals(t *testing.T) {
+	cfg := testConfig(t, "")
+	if err := os.Chmod(cfg.SecretsFile, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{}); err == nil {
+		t.Error("world-readable secrets accepted")
+	}
+
+	cfg = testConfig(t, "")
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfg.DataDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{}); err == nil {
+		t.Error("0755 data dir accepted")
+	}
+}
+
+func TestSecretsNeverLogged(t *testing.T) {
+	cfg := testConfig(t, "")
+	a, logs := newApp(t, cfg)
+	srv := httptest.NewServer(a.Handler())
+	defer srv.Close()
+	resp, err := testutil.LocalClient().Get(srv.URL + "/healthz?x=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	raw := bytes.Repeat([]byte{secretKeyByte}, 32)
+	b64 := base64.StdEncoding.EncodeToString(raw)
+	if strings.Contains(logs.String(), b64) || bytes.Contains(logs.Bytes(), raw) {
+		t.Fatal("secret value found in logs")
+	}
+}
+
+func TestServeAndGracefulShutdown(t *testing.T) {
+	a, _ := newApp(t, testConfig(t, ""))
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- a.ServeListener(ctx, ln) }()
+	resp, err := testutil.LocalClient().Get("http://" + ln.Addr().String() + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("shutdown timed out")
+	}
+}
+
+func TestNetworkGuardActive(t *testing.T) {
+	if _, err := http.Get("http://example.com/"); err == nil {
+		t.Fatal("outbound request succeeded; network guard not active")
+	}
+}
