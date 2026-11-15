@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -81,6 +82,10 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, opt Options)
 	theme, err := contract.DefaultTheme()
 	if err != nil {
 		return nil, fmt.Errorf("default theme: %w", err)
+	}
+	// S-10: the failed internal drive is always excluded, whatever the config.
+	if !slices.Contains(cfg.Excluded, "/mnt/internal-hdd") {
+		cfg.Excluded = append(cfg.Excluded, "/mnt/internal-hdd")
 	}
 	db, err := store.Open(ctx, cfg.DataDir)
 	if err != nil {
