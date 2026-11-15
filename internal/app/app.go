@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ntsrihari/knowhere-nexus/internal/audit"
@@ -60,6 +61,8 @@ type App struct {
 	events    *hub
 	widgets   *widgetSet
 	now       func() time.Time
+	intOnce   sync.Once
+	integ     *integrations
 }
 
 // Options adjust construction (tests use them).
@@ -238,10 +241,14 @@ func (a *App) background(ctx context.Context) {
 	a.widgets.start(ctx)
 	t := time.NewTicker(10 * time.Minute)
 	defer t.Stop()
+	outage := time.NewTicker(time.Minute)
+	defer outage.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-outage.C:
+			a.watchOutages(ctx)
 		case <-t.C:
 			if err := a.sessions.Prune(ctx); err != nil {
 				a.log.Warn("session prune failed", "error", err.Error())

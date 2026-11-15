@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -133,6 +134,10 @@ type Request struct {
 	Header  http.Header
 	Body    any // JSON-encoded when non-nil
 	RawBody []byte
+	// Form, when set, is sent as application/x-www-form-urlencoded.
+	Form map[string]string
+	// RespHeader, when non-nil, receives the response headers.
+	RespHeader *http.Header
 }
 
 // Do performs the request and decodes a JSON response into out (if non-nil).
@@ -181,6 +186,12 @@ func (c *Client) DoRaw(ctx context.Context, r Request) ([]byte, error) {
 		body = bytes.NewReader(b)
 	case r.RawBody != nil:
 		body = bytes.NewReader(r.RawBody)
+	case r.Form != nil:
+		f := url.Values{}
+		for k, v := range r.Form {
+			f.Set(k, v)
+		}
+		body = strings.NewReader(f.Encode())
 	}
 	method := r.Method
 	if method == "" {
@@ -204,12 +215,18 @@ func (c *Client) DoRaw(ctx context.Context, r Request) ([]byte, error) {
 	if r.Body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if r.Form != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		c.record(err)
 		return nil, fmt.Errorf("%s: %w", c.Name, err)
 	}
 	defer resp.Body.Close()
+	if r.RespHeader != nil {
+		*r.RespHeader = resp.Header.Clone()
+	}
 	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponse+1))
 	if err != nil {
 		c.record(err)

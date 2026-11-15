@@ -186,6 +186,23 @@ CREATE TABLE user_prefs (
 	desktop     TEXT,
 	updated_at  INTEGER NOT NULL
 ) STRICT;
+CREATE TABLE watch_samples (
+	at         INTEGER NOT NULL,
+	user_name  TEXT    NOT NULL,
+	item       TEXT    NOT NULL,
+	item_type  TEXT    NOT NULL,
+	client     TEXT    NOT NULL,
+	transcode  INTEGER NOT NULL
+) STRICT;
+CREATE INDEX watch_samples_at ON watch_samples(at);
+CREATE TABLE notifications (
+	seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+	at         INTEGER NOT NULL,
+	kind       TEXT    NOT NULL,
+	title      TEXT    NOT NULL,
+	body       TEXT    NOT NULL,
+	admin_only INTEGER NOT NULL
+) STRICT;
 CREATE TABLE household (
 	key        TEXT PRIMARY KEY,
 	value      TEXT NOT NULL,

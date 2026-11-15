@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ntsrihari/knowhere-nexus/internal/config"
 	"github.com/ntsrihari/knowhere-nexus/internal/testutil"
 )
 
@@ -30,7 +32,10 @@ type client struct {
 	tok string // bearer, if set
 }
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvWith(t, nil, "") }
+
+// newEnvWith lets a test adjust the config and append to the secrets file.
+func newEnvWith(t *testing.T, mutate func(*config.Config), extraSecrets string) *env {
 	t.Helper()
 	jf := testutil.NewFakeJellyfin(
 		testutil.FakeUser{ID: "admin1", Name: "alice", Password: "apw", Admin: true},
@@ -43,6 +48,17 @@ func newEnv(t *testing.T) *env {
 	cfg := testConfig(t, "")
 	cfg.JellyfinURL = jf.URL
 	cfg.PublicOrigin = ts.URL
+	if extraSecrets != "" {
+		f, err := os.OpenFile(cfg.SecretsFile, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = f.WriteString(extraSecrets)
+		f.Close()
+	}
+	if mutate != nil {
+		mutate(cfg)
+	}
 	a, err := New(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Static: testSite})
 	if err != nil {
 		t.Fatal(err)
