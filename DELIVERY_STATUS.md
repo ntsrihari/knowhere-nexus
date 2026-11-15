@@ -26,8 +26,21 @@ make image container-test             # hardened container
 ```
 Configuration: `examples/config.yaml` (every option), `examples/secrets.example.yaml`.
 
-## Other products
-Prism, Collector and Milano are being built in local repositories (`/home/user/knowhere-{prism,collector,milano}`) because their GitHub repositories don't exist yet. **Create `ntsrihari/knowhere-prism`, `ntsrihari/knowhere-collector` and `ntsrihari/knowhere-milano` (empty) so they can be pushed.**
+## Other products (built and tested locally; not yet on GitHub)
+Their GitHub repositories don't exist, so they live only in this session's container:
+
+| Product | Local path | Commits | Verified |
+|---|---|---|---|
+| Prism | `/home/user/knowhere-prism` | 5 | 171 web (Vitest) and 74 Kotlin (JUnit) tests pass; TS/Kotlin colour parity golden tests; theme packs; CSP-safe preview |
+| Collector | `/home/user/knowhere-collector` | 14 | `go test -race` 24 packages; staticcheck clean; end-to-end flow against fakes; pure-Go APK v2/v3 verification and F-Droid index signing; container test passes (26 MB, 7 MiB idle); deploy execution disabled |
+| Milano | `/home/user/knowhere-milano` | 8 | 32 unit tests; lint; debug APKs for phone and Android TV built (`dist/`); sends the Nexus CSRF header (fixed during integration review) |
+
+**Owner action needed:** create empty `ntsrihari/knowhere-prism`, `ntsrihari/knowhere-collector` and `ntsrihari/knowhere-milano`. Each local `main` can then be pushed as-is. Until then this container is the only copy.
+
+Known gaps:
+- **Milano:** no device or emulator run yet; music, Live TV, downloads and casting are hidden, not built.
+- **Collector:** template image tags aren't digest-pinned; publishing was tested against a fake Nexus only.
+- **Prism:** the Gradle wrapper checksum isn't set.
 
 ## Blockers and decisions still open
 - Deployment to Knowhere: B-06 routing/TLS, B-07 approved routes, B-08 tailnet ACL, B-10 deploy approval.
