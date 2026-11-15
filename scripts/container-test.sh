@@ -18,9 +18,13 @@ fail() { echo "FAIL: $*" >&2; docker logs "$name" 2>&1 | tail -20 >&2 || true; e
 work=$(mktemp -d "${TMPDIR:-/tmp}/nexus-ct.XXXXXX")
 mkdir -p "$work/etc" "$work/data"
 cp examples/catalog.yaml "$work/etc/catalog.yaml"
-cat > "$work/etc/config.yaml" <<'YAML'
+# Port-forwarded requests arrive from the bridge gateway: trust it for this test.
+gateway=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+cat > "$work/etc/config.yaml" <<YAML
 listen: 0.0.0.0:8480
 publicOrigin: https://nexus.example.ts.net
+trustedProxies: [${gateway}]
+requireTailnet: false
 dataDir: /var/lib/nexus
 catalogPath: /etc/nexus/catalog.yaml
 secretsFile: /etc/nexus/secrets.yaml

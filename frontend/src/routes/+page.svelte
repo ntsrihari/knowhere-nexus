@@ -1,21 +1,24 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import Launcher from '#lib/components/Launcher.svelte';
+	import Widgets from '#lib/components/Widgets.svelte';
+	import { session } from '#lib/session.svelte.ts';
 	import { getJSON, type Health } from '#lib/api.ts';
+	import { onMount } from 'svelte';
 
 	let status = $state('checking…');
-
 	onMount(async () => {
 		try {
-			const h = await getJSON<Health>('/healthz');
-			status = h.status;
+			status = (await getJSON<Health>('/healthz')).status;
 		} catch {
 			status = 'unavailable';
 		}
 	});
 </script>
 
-<main class="shell">
-	<h1>Knowhere Nexus</h1>
-	<p class="lead">Foundation build (M1). Sign-in, widgets and the launcher arrive in later milestones.</p>
-	<p class="status">Server status: <strong data-testid="health-status">{status}</strong></p>
-</main>
+<div class="page">
+	<h1>Hello, {session.current?.user.name}</h1>
+	<p class="muted">Server status: <strong data-testid="health-status">{status}</strong></p>
+	<Launcher />
+	<h2 class="section">Status</h2>
+	<Widgets />
+</div>

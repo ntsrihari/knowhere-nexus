@@ -109,6 +109,7 @@ func TestRouteTable(t *testing.T) {
 		{Pattern: "/api/v1/auth/verify", Methods: get, Role: authz.Public},
 		{Pattern: "/api/v1/events", Methods: get, Role: authz.User},
 		{Pattern: "/api/v1/me", Methods: get, Role: authz.User},
+		{Pattern: "/api/v1/me/desktop-layout", Methods: []string{"GET", "PUT"}, Role: authz.User},
 		{Pattern: "/api/v1/me/home-layout", Methods: []string{"PUT"}, Role: authz.User},
 		{Pattern: "/api/v1/me/sessions", Methods: get, Role: authz.User},
 		{Pattern: "/api/v1/me/sessions/revoke-others", Methods: post, Role: authz.User},

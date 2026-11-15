@@ -22,7 +22,7 @@ WORKDIR /src
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOFLAGS=-mod=readonly
 COPY go.mod go.sum ./
 RUN go mod download && go mod verify
-COPY cmd ./cmd
+COPY cmd/nexus ./cmd/nexus
 COPY contracts ./contracts
 COPY internal ./internal
 COPY --from=web /src/frontend/build/ ./internal/webui/dist/

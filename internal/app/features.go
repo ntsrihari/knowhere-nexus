@@ -37,6 +37,7 @@ func (a *App) registerFeatureRoutes() {
 	R("/api/v1/me", authz.User, get, http.HandlerFunc(a.handleMe))
 	R("/api/v1/me/home-layout", authz.User, put, http.HandlerFunc(a.handleHomeLayout))
 	R("/api/v1/me/theme", authz.User, put, http.HandlerFunc(a.handleMyTheme))
+	R("/api/v1/me/desktop-layout", authz.User, []string{"GET", "PUT"}, http.HandlerFunc(a.handleDesktopLayout))
 	R("/api/v1/themes", authz.User, get, http.HandlerFunc(a.handleThemes))
 	R("/api/v1/themes/household", authz.User, get, http.HandlerFunc(a.handleHouseholdTheme))
 	R("/api/v1/themes/household/set", authz.AdminFresh, put, http.HandlerFunc(a.handleSetHouseholdTheme))
@@ -213,6 +214,55 @@ func (a *App) handleHomeLayout(w http.ResponseWriter, r *http.Request) {
 	}
 	b, _ := json.Marshal(body)
 	if err := a.setPref(r.Context(), s.UserID, "home_layout", b); err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "could not save")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, body)
+}
+
+// handleDesktopLayout stores the per-user window layout (F-23).
+func (a *App) handleDesktopLayout(w http.ResponseWriter, r *http.Request) {
+	s := mustSession(r)
+	if r.Method == http.MethodGet {
+		raw, err := a.pref(r.Context(), s.UserID, "desktop")
+		if err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "preferences unavailable")
+			return
+		}
+		if raw == nil {
+			raw = json.RawMessage(`{"windows":[]}`)
+		}
+		httpx.WriteJSON(w, http.StatusOK, raw)
+		return
+	}
+	type win struct {
+		App       string `json:"app"`
+		X         int    `json:"x"`
+		Y         int    `json:"y"`
+		W         int    `json:"w"`
+		H         int    `json:"h"`
+		Z         int    `json:"z"`
+		Minimized bool   `json:"minimized"`
+	}
+	var body struct {
+		Windows []win `json:"windows"`
+	}
+	if !httpx.DecodeJSON(w, r, &body) {
+		return
+	}
+	if len(body.Windows) > 20 {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, httpx.CodeValidation, "too many windows")
+		return
+	}
+	for _, wn := range body.Windows {
+		if len(wn.App) == 0 || len(wn.App) > 40 || wn.W < 0 || wn.H < 0 || wn.W > 10000 || wn.H > 10000 ||
+			wn.X < -10000 || wn.X > 10000 || wn.Y < -10000 || wn.Y > 10000 {
+			httpx.WriteError(w, http.StatusUnprocessableEntity, httpx.CodeValidation, "invalid window")
+			return
+		}
+	}
+	b, _ := json.Marshal(body)
+	if err := a.setPref(r.Context(), s.UserID, "desktop", b); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, httpx.CodeInternal, "could not save")
 		return
 	}

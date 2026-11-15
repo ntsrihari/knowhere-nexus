@@ -173,3 +173,23 @@ func TestThemePrecedenceAndLayout(t *testing.T) {
 		t.Fatalf("me: %s", b)
 	}
 }
+
+func TestDesktopLayout(t *testing.T) {
+	e := newEnv(t)
+	bob := e.client()
+	bob.login("bob", "bpw")
+	if _, b := bob.do("GET", "/api/v1/me/desktop-layout", nil); !strings.Contains(string(b), `"windows":[]`) {
+		t.Fatalf("default: %s", b)
+	}
+	lay := map[string]any{"windows": []map[string]any{{"app": "widgets", "x": 10, "y": 20, "w": 400, "h": 300, "z": 1}}}
+	if code, _ := bob.do("PUT", "/api/v1/me/desktop-layout", lay); code != 200 {
+		t.Fatal("save")
+	}
+	if _, b := bob.do("GET", "/api/v1/me/desktop-layout", nil); !strings.Contains(string(b), `"app":"widgets"`) {
+		t.Fatalf("load: %s", b)
+	}
+	bad := map[string]any{"windows": []map[string]any{{"app": "", "w": 1}}}
+	if code, _ := bob.do("PUT", "/api/v1/me/desktop-layout", bad); code != 422 {
+		t.Fatal("invalid window accepted")
+	}
+}

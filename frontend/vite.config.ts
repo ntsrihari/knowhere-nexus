@@ -28,6 +28,8 @@ export default defineConfig({
 	},
 	test: {
 		include: ['src/**/*.test.ts'],
-		environment: 'node'
+		environment: 'node',
+		// The package uses extensionless ESM imports; let Vite resolve them.
+		server: { deps: { inline: ['@material/material-color-utilities'] } }
 	}
 });
