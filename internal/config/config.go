@@ -6,6 +6,8 @@
 package config
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -32,6 +35,63 @@ type File struct {
 	CatalogPath    string   `yaml:"catalogPath"`
 	SecretsFile    string   `yaml:"secretsFile"`
 	LogLevel       string   `yaml:"logLevel"`
+	// RequireTailnet rejects clients outside Tailscale address ranges (R-15).
+	// Defaults to true; set false only for local development.
+	RequireTailnet *bool            `yaml:"requireTailnet"`
+	Jellyfin       EndpointFile     `yaml:"jellyfin"`
+	Docker         EndpointFile     `yaml:"docker"`
+	Storage        StorageFile      `yaml:"storage"`
+	Integrations   IntegrationsFile `yaml:"integrations"`
+	Routes         []RouteFile      `yaml:"routes"`
+	Services       []ServiceFile    `yaml:"services"`
+}
+
+// EndpointFile is a downstream base URL.
+type EndpointFile struct {
+	URL string `yaml:"url"`
+}
+
+// StorageFile lists mounts reported by the storage widget (R-13).
+type StorageFile struct {
+	Mounts   []MountFile `yaml:"mounts"`
+	Excluded []string    `yaml:"excluded"`
+}
+
+// MountFile is one monitored mount: Path is where Nexus can see it.
+type MountFile struct {
+	Label string `yaml:"label"`
+	Path  string `yaml:"path"`
+	// HostPath is the path on the host, matched in mountinfo (defaults to Path).
+	HostPath string `yaml:"hostPath"`
+}
+
+// IntegrationsFile holds optional downstream service endpoints.
+type IntegrationsFile struct {
+	Immich      EndpointFile `yaml:"immich"`
+	Pihole      EndpointFile `yaml:"pihole"`
+	QBittorrent EndpointFile `yaml:"qbittorrent"`
+	Radarr      EndpointFile `yaml:"radarr"`
+	Sonarr      EndpointFile `yaml:"sonarr"`
+	Prowlarr    EndpointFile `yaml:"prowlarr"`
+	Jellyseerr  EndpointFile `yaml:"jellyseerr"`
+}
+
+// RouteFile is an authorized reverse-proxy route (R-06, A-02).
+type RouteFile struct {
+	ID         string `yaml:"id"`
+	URL        string `yaml:"url"`
+	AuthMode   string `yaml:"authMode"`
+	Audience   string `yaml:"audience"`
+	ApprovedBy string `yaml:"approvedBy"`
+	ApprovedOn string `yaml:"approvedOn"`
+}
+
+// ServiceFile registers a service identity for service tokens (R-03).
+type ServiceFile struct {
+	ID        string   `yaml:"id"`
+	PublicKey string   `yaml:"publicKey"` // base64 Ed25519 public key
+	Scopes    []string `yaml:"scopes"`
+	Disabled  bool     `yaml:"disabled"`
 }
 
 // Config is the validated configuration.
@@ -43,6 +103,28 @@ type Config struct {
 	CatalogPath    string // absolute
 	SecretsFile    string // absolute
 	LogLevel       slog.Level
+	RequireTailnet bool
+	JellyfinURL    string // empty: not configured
+	DockerURL      string // empty: not configured
+	Mounts         []Mount
+	Excluded       []string
+	Integrations   map[string]string // name -> base URL (configured only)
+	Routes         []Route
+	Services       []Service
+}
+
+// Mount is a validated monitored mount.
+type Mount struct{ Label, Path, HostPath string }
+
+// Route is a validated authorized route.
+type Route struct{ ID, URL, AuthMode, Audience, ApprovedBy, ApprovedOn string }
+
+// Service is a validated service identity.
+type Service struct {
+	ID        string
+	PublicKey []byte
+	Scopes    []string
+	Disabled  bool
 }
 
 // ValidationError lists every problem found, one per field.
@@ -161,10 +243,92 @@ func (f *File) validate(baseDir string) (*Config, error) {
 		add("logLevel: must be one of debug, info, warn, error")
 	}
 
+	c.RequireTailnet = f.RequireTailnet == nil || *f.RequireTailnet
+	c.JellyfinURL = checkURL("jellyfin.url", f.Jellyfin.URL, add)
+	c.DockerURL = checkURL("docker.url", f.Docker.URL, add)
+	c.Integrations = map[string]string{}
+	for name, ep := range map[string]EndpointFile{
+		"immich": f.Integrations.Immich, "pihole": f.Integrations.Pihole,
+		"qbittorrent": f.Integrations.QBittorrent, "radarr": f.Integrations.Radarr,
+		"sonarr": f.Integrations.Sonarr, "prowlarr": f.Integrations.Prowlarr,
+		"jellyseerr": f.Integrations.Jellyseerr,
+	} {
+		if u := checkURL("integrations."+name+".url", ep.URL, add); u != "" {
+			c.Integrations[name] = u
+		}
+	}
+	for i, m := range f.Storage.Mounts {
+		if m.Label == "" || len(m.Label) > 40 {
+			add("storage.mounts[%d].label: required, at most 40 characters", i)
+		}
+		if !filepath.IsAbs(m.Path) || strings.ContainsAny(m.Path, "\x00") {
+			add("storage.mounts[%d].path: must be an absolute path", i)
+		}
+		hp := m.HostPath
+		if hp == "" {
+			hp = m.Path
+		}
+		c.Mounts = append(c.Mounts, Mount{Label: m.Label, Path: filepath.Clean(m.Path), HostPath: filepath.Clean(hp)})
+	}
+	c.Excluded = []string{"/mnt/internal-hdd"}
+	for i, e := range f.Storage.Excluded {
+		if !filepath.IsAbs(e) {
+			add("storage.excluded[%d]: must be an absolute path", i)
+			continue
+		}
+		c.Excluded = append(c.Excluded, filepath.Clean(e))
+	}
+	idRe := regexp.MustCompile(`^[a-z][a-z0-9-]{0,39}$`)
+	seenRoute := map[string]bool{}
+	for i, r := range f.Routes {
+		if !idRe.MatchString(r.ID) || seenRoute[r.ID] {
+			add("routes[%d].id: must be a unique lowercase id", i)
+		}
+		seenRoute[r.ID] = true
+		if r.AuthMode != "nexus" && r.AuthMode != "upstream" {
+			add("routes[%d].authMode: must be nexus or upstream", i)
+		}
+		if r.ApprovedBy == "" || r.ApprovedOn == "" {
+			add("routes[%d]: approvedBy and approvedOn are required (A-02)", i)
+		}
+		u := r.URL
+		if !strings.HasPrefix(u, "/") {
+			u = checkURL(fmt.Sprintf("routes[%d].url", i), r.URL, add)
+		}
+		c.Routes = append(c.Routes, Route{ID: r.ID, URL: u, AuthMode: r.AuthMode, Audience: r.Audience, ApprovedBy: r.ApprovedBy, ApprovedOn: r.ApprovedOn})
+	}
+	seenSvc := map[string]bool{}
+	for i, sv := range f.Services {
+		if !idRe.MatchString(sv.ID) || seenSvc[sv.ID] {
+			add("services[%d].id: must be a unique lowercase id", i)
+		}
+		seenSvc[sv.ID] = true
+		key, err := base64.StdEncoding.DecodeString(sv.PublicKey)
+		if err != nil || len(key) != ed25519.PublicKeySize {
+			add("services[%d].publicKey: must be a base64 Ed25519 public key", i)
+		}
+		c.Services = append(c.Services, Service{ID: sv.ID, PublicKey: key, Scopes: sv.Scopes, Disabled: sv.Disabled})
+	}
+
 	if len(problems) > 0 {
 		return nil, &ValidationError{Problems: problems}
 	}
 	return c, nil
+}
+
+// checkURL validates an optional http(s) base URL without credentials,
+// query or fragment and returns it without a trailing slash.
+func checkURL(field, raw string, add func(string, ...any)) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+		u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		add("%s: must be an http(s) URL without credentials, query or fragment", field)
+		return ""
+	}
+	return strings.TrimRight(u.String(), "/")
 }
 
 func normaliseOrigin(raw string) (string, error) {

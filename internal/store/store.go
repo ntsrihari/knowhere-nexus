@@ -128,6 +128,70 @@ const bootstrapSQL = `CREATE TABLE IF NOT EXISTS schema_migrations (
 // append a new one. Session and audit tables arrive with M2.
 var Migrations = []Migration{
 	{Version: 1, Name: "schema_migrations", SQL: bootstrapSQL},
+	{Version: 2, Name: "sessions", SQL: `
+CREATE TABLE session_families (
+	id                  TEXT    PRIMARY KEY,
+	user_id             TEXT    NOT NULL,
+	username            TEXT    NOT NULL,
+	role                TEXT    NOT NULL,
+	role_verified_at    INTEGER NOT NULL,
+	reauth_at           INTEGER NOT NULL DEFAULT 0,
+	kind                TEXT    NOT NULL,
+	auth_method         TEXT    NOT NULL,
+	device_label        TEXT    NOT NULL DEFAULT '',
+	tailscale_login     TEXT    NOT NULL DEFAULT '',
+	created_at          INTEGER NOT NULL,
+	last_seen_at        INTEGER NOT NULL,
+	absolute_expires_at INTEGER NOT NULL,
+	revoked_at          INTEGER NOT NULL DEFAULT 0,
+	revoked_by          TEXT    NOT NULL DEFAULT '',
+	revoke_reason       TEXT    NOT NULL DEFAULT ''
+) STRICT;
+CREATE INDEX session_families_user ON session_families(user_id);
+CREATE TABLE access_tokens (
+	hash       TEXT    PRIMARY KEY,
+	family_id  TEXT    NOT NULL REFERENCES session_families(id) ON DELETE CASCADE,
+	expires_at INTEGER NOT NULL
+) STRICT;
+CREATE INDEX access_tokens_family ON access_tokens(family_id);
+CREATE TABLE refresh_tokens (
+	hash              TEXT    PRIMARY KEY,
+	family_id         TEXT    NOT NULL REFERENCES session_families(id) ON DELETE CASCADE,
+	expires_at        INTEGER NOT NULL,
+	used_at           INTEGER NOT NULL DEFAULT 0,
+	successor_enc     BLOB,
+	successor_expires INTEGER NOT NULL DEFAULT 0
+) STRICT;
+CREATE INDEX refresh_tokens_family ON refresh_tokens(family_id);`},
+	{Version: 3, Name: "audit", SQL: `
+CREATE TABLE audit (
+	seq             INTEGER PRIMARY KEY AUTOINCREMENT,
+	at              INTEGER NOT NULL,
+	prev_hash       TEXT    NOT NULL,
+	hash            TEXT    NOT NULL,
+	actor_user_id   TEXT    NOT NULL,
+	actor_name      TEXT    NOT NULL,
+	tailscale_login TEXT    NOT NULL,
+	action          TEXT    NOT NULL,
+	target          TEXT    NOT NULL,
+	params          TEXT    NOT NULL,
+	result          TEXT    NOT NULL,
+	request_id      TEXT    NOT NULL
+);`},
+	{Version: 4, Name: "preferences", SQL: `
+CREATE TABLE user_prefs (
+	user_id     TEXT PRIMARY KEY,
+	theme       TEXT,
+	home_layout TEXT,
+	desktop     TEXT,
+	updated_at  INTEGER NOT NULL
+) STRICT;
+CREATE TABLE household (
+	key        TEXT PRIMARY KEY,
+	value      TEXT NOT NULL,
+	updated_by TEXT NOT NULL,
+	updated_at INTEGER NOT NULL
+) STRICT;`},
 }
 
 // Migrate applies every migration not yet recorded, each in its own

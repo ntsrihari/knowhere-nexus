@@ -15,13 +15,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ntsrihari/knowhere-nexus/internal/audit"
 	"github.com/ntsrihari/knowhere-nexus/internal/authz"
 	"github.com/ntsrihari/knowhere-nexus/internal/catalog"
 	"github.com/ntsrihari/knowhere-nexus/internal/config"
 	"github.com/ntsrihari/knowhere-nexus/internal/contract"
 	"github.com/ntsrihari/knowhere-nexus/internal/httpx"
+	"github.com/ntsrihari/knowhere-nexus/internal/jellyfin"
+	"github.com/ntsrihari/knowhere-nexus/internal/netguard"
+	"github.com/ntsrihari/knowhere-nexus/internal/ratelimit"
 	"github.com/ntsrihari/knowhere-nexus/internal/secrets"
+	"github.com/ntsrihari/knowhere-nexus/internal/session"
 	"github.com/ntsrihari/knowhere-nexus/internal/store"
+	"github.com/ntsrihari/knowhere-nexus/internal/upstream"
 	"github.com/ntsrihari/knowhere-nexus/internal/webui"
 )
 
@@ -43,6 +49,16 @@ type App struct {
 	site    *webui.Site
 	handler http.Handler
 	limits  httpx.Limits
+
+	sessions  *session.Store
+	audit     *audit.Log
+	jf        *jellyfin.Client
+	ipLimit   *ratelimit.Limiter
+	userLimit *ratelimit.Limiter
+	qc        *pendingQC
+	events    *hub
+	widgets   *widgetSet
+	now       func() time.Time
 }
 
 // Options adjust construction (tests use them).
@@ -71,14 +87,26 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, opt Options)
 		return nil, err
 	}
 	a := &App{
-		cfg:     cfg,
-		log:     log,
-		db:      db,
-		secrets: sec,
-		catalog: catalog.NewHolder(),
-		theme:   theme,
-		limits:  httpx.DefaultLimits,
+		cfg:       cfg,
+		log:       log,
+		db:        db,
+		secrets:   sec,
+		catalog:   catalog.NewHolder(),
+		theme:     theme,
+		limits:    httpx.DefaultLimits,
+		now:       time.Now,
+		audit:     audit.New(db.DB),
+		jf:        jellyfin.New(upstream.New("jellyfin", cfg.JellyfinURL)),
+		ipLimit:   ratelimit.New(20, 15*time.Minute),
+		userLimit: ratelimit.New(5, 15*time.Minute),
+		qc:        &pendingQC{m: map[string]qcEntry{}},
+		events:    newHub(),
 	}
+	if a.sessions, err = session.NewStore(db.DB, sec.SessionEncryptionKey.Expose()); err != nil {
+		db.Close()
+		return nil, err
+	}
+	a.widgets = newWidgetSet(a)
 	if opt.Limits != nil {
 		a.limits = *opt.Limits
 	}
@@ -98,7 +126,7 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, opt Options)
 
 	a.routes = authz.NewRegistry()
 	a.registerRoutes()
-	mux, err := a.routes.Build(authz.PublicOnly{})
+	mux, err := a.routes.Build(sessionGuard{a: a})
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -108,12 +136,41 @@ func New(ctx context.Context, cfg *config.Config, log *slog.Logger, opt Options)
 		httpx.RequestID(),
 		httpx.AccessLog(log),
 		httpx.Recover(log),
+		netguard.Guard(cfg.TrustedProxies, cfg.RequireTailnet, a.boundaryRejected),
+		csrf(cfg.PublicOrigin),
 		httpx.LimitBody(a.limits.MaxBodyBytes),
 	)
 	return a, nil
 }
 
+func (a *App) boundaryRejected(r *http.Request, reason string) {
+	a.log.Warn("request rejected at network boundary", "reason", reason, "path", r.URL.Path,
+		"request_id", httpx.RequestIDFrom(r.Context()))
+}
+
 func (a *App) registerRoutes() {
+	get, post, del := []string{http.MethodGet}, []string{http.MethodPost}, []string{http.MethodDelete}
+	R := a.routes.Handle
+	// Authentication and sessions (M2).
+	R("/api/v1/auth/login", authz.Public, post, http.HandlerFunc(a.handleLogin))
+	R("/api/v1/auth/quickconnect", authz.Public, post, http.HandlerFunc(a.handleQuickConnectStart))
+	R("/api/v1/auth/quickconnect/{pollId}", authz.Public, post, http.HandlerFunc(a.handleQuickConnectPoll))
+	R("/api/v1/auth/token-exchange", authz.Public, post, http.HandlerFunc(a.handleTokenExchange))
+	R("/api/v1/auth/refresh", authz.Public, post, http.HandlerFunc(a.handleRefresh))
+	R("/api/v1/auth/logout", authz.User, post, http.HandlerFunc(a.handleLogout))
+	R("/api/v1/auth/session", authz.User, get, http.HandlerFunc(a.handleSession))
+	R("/api/v1/auth/reauth", authz.User, post, http.HandlerFunc(a.handleReauth))
+	R("/api/v1/me/sessions", authz.User, get, http.HandlerFunc(a.handleMySessions))
+	R("/api/v1/me/sessions/{id}", authz.User, del, http.HandlerFunc(a.handleRevokeMySession))
+	R("/api/v1/me/sessions/revoke-others", authz.User, post, http.HandlerFunc(a.handleRevokeOtherSessions))
+	R("/api/v1/admin/sessions", authz.Admin, get, http.HandlerFunc(a.handleAdminSessions))
+	R("/api/v1/admin/sessions/{id}", authz.AdminFresh, del, http.HandlerFunc(a.handleAdminRevokeSession))
+	R("/api/v1/admin/users/{userId}/revoke-sessions", authz.AdminFreshReauth, post, http.HandlerFunc(a.handleAdminRevokeUser))
+	R("/api/v1/admin/audit", authz.Admin, get, http.HandlerFunc(a.handleAudit))
+	R("/api/v1/admin/audit/verify", authz.Admin, get, http.HandlerFunc(a.handleAuditVerify))
+	R("/api/v1/events", authz.User, get, http.HandlerFunc(a.handleEvents))
+	a.registerFeatureRoutes()
+
 	a.routes.Handle("/healthz", authz.Public, []string{http.MethodGet}, http.HandlerFunc(health))
 	a.routes.Handle("/api/", authz.Public, allMethods, http.HandlerFunc(apiNotFound))
 	a.routes.Handle("/", authz.Public, []string{http.MethodGet}, a.site)
@@ -171,6 +228,26 @@ func (a *App) Routes() []authz.Info { return a.routes.Routes() }
 // Catalog returns the catalog holder.
 func (a *App) Catalog() *catalog.Holder { return a.catalog }
 
+// background runs periodic maintenance until ctx ends.
+func (a *App) background(ctx context.Context) {
+	a.widgets.start(ctx)
+	t := time.NewTicker(10 * time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if err := a.sessions.Prune(ctx); err != nil {
+				a.log.Warn("session prune failed", "error", err.Error())
+			}
+			if err := a.audit.Prune(ctx); err != nil {
+				a.log.Warn("audit prune failed", "error", err.Error())
+			}
+		}
+	}
+}
+
 // Close releases resources.
 func (a *App) Close() error { return a.db.Close() }
 
@@ -189,6 +266,7 @@ func (a *App) ServeListener(ctx context.Context, ln net.Listener) error {
 	srv := httpx.NewServer(a.cfg.Listen, a.handler, a.limits)
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
+	go a.background(ctx)
 	a.log.Info("nexus listening", "addr", ln.Addr().String(), "origin", a.cfg.PublicOrigin)
 	select {
 	case err := <-errc:

@@ -12,8 +12,9 @@ import (
 // outboundAllowed lists the non-test files allowed to create outbound network
 // connections. Adding a file here is a reviewed decision (P-12, R-09).
 var outboundAllowed = map[string]bool{
-	"cmd/nexus/healthcheck.go":   true, // loopback-only container healthcheck
-	"internal/testutil/nonet.go": true,
+	"cmd/nexus/healthcheck.go":      true, // loopback-only container healthcheck
+	"internal/testutil/nonet.go":    true,
+	"internal/upstream/upstream.go": true, // the single downstream client (R-09)
 }
 
 var outboundRe = regexp.MustCompile(`\bnet\.Dial|\bnet\.DialTCP|\bnet\.DialUDP|\btls\.Dial|` +

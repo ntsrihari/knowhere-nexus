@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -41,12 +42,14 @@ func testConfig(t *testing.T, catalogPath string) *config.Config {
 		catalogPath, _ = filepath.Abs("../../examples/catalog.yaml")
 	}
 	return &config.Config{
-		Listen:       "127.0.0.1:0",
-		PublicOrigin: "http://localhost:8480",
-		DataDir:      filepath.Join(dir, "data"),
-		CatalogPath:  catalogPath,
-		SecretsFile:  sec,
-		LogLevel:     slog.LevelInfo,
+		TrustedProxies: []netip.Addr{netip.MustParseAddr("127.0.0.1"), netip.MustParseAddr("192.0.2.1")},
+		RequireTailnet: false,
+		Listen:         "127.0.0.1:0",
+		PublicOrigin:   "http://localhost:8480",
+		DataDir:        filepath.Join(dir, "data"),
+		CatalogPath:    catalogPath,
+		SecretsFile:    sec,
+		LogLevel:       slog.LevelInfo,
 	}
 }
 
@@ -65,10 +68,28 @@ func newApp(t *testing.T, cfg *config.Config) (*App, *bytes.Buffer) {
 // here with its role, or this test fails.
 func TestRouteTable(t *testing.T) {
 	a, _ := newApp(t, testConfig(t, ""))
+	get, post, del := []string{"GET"}, []string{"POST"}, []string{"DELETE"}
 	want := []authz.Info{
-		{Pattern: "/", Methods: []string{"GET"}, Role: authz.Public},
+		{Pattern: "/", Methods: get, Role: authz.Public},
 		{Pattern: "/api/", Methods: allMethods, Role: authz.Public},
-		{Pattern: "/healthz", Methods: []string{"GET"}, Role: authz.Public},
+		{Pattern: "/api/v1/admin/audit", Methods: get, Role: authz.Admin},
+		{Pattern: "/api/v1/admin/audit/verify", Methods: get, Role: authz.Admin},
+		{Pattern: "/api/v1/admin/sessions", Methods: get, Role: authz.Admin},
+		{Pattern: "/api/v1/admin/sessions/{id}", Methods: del, Role: authz.AdminFresh},
+		{Pattern: "/api/v1/admin/users/{userId}/revoke-sessions", Methods: post, Role: authz.AdminFreshReauth},
+		{Pattern: "/api/v1/auth/login", Methods: post, Role: authz.Public},
+		{Pattern: "/api/v1/auth/logout", Methods: post, Role: authz.User},
+		{Pattern: "/api/v1/auth/quickconnect", Methods: post, Role: authz.Public},
+		{Pattern: "/api/v1/auth/quickconnect/{pollId}", Methods: post, Role: authz.Public},
+		{Pattern: "/api/v1/auth/reauth", Methods: post, Role: authz.User},
+		{Pattern: "/api/v1/auth/refresh", Methods: post, Role: authz.Public},
+		{Pattern: "/api/v1/auth/session", Methods: get, Role: authz.User},
+		{Pattern: "/api/v1/auth/token-exchange", Methods: post, Role: authz.Public},
+		{Pattern: "/api/v1/events", Methods: get, Role: authz.User},
+		{Pattern: "/api/v1/me/sessions", Methods: get, Role: authz.User},
+		{Pattern: "/api/v1/me/sessions/revoke-others", Methods: post, Role: authz.User},
+		{Pattern: "/api/v1/me/sessions/{id}", Methods: del, Role: authz.User},
+		{Pattern: "/healthz", Methods: get, Role: authz.Public},
 	}
 	if got := a.Routes(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("route table changed:\n got %+v\nwant %+v", got, want)
@@ -78,7 +99,11 @@ func TestRouteTable(t *testing.T) {
 func do(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rr := httptest.NewRecorder()
-	h.ServeHTTP(rr, httptest.NewRequest(method, path, nil))
+	req := httptest.NewRequest(method, path, nil)
+	if method != http.MethodGet && method != http.MethodHead {
+		req.Header.Set("X-Nexus-CSRF", "1")
+	}
+	h.ServeHTTP(rr, req)
 	return rr
 }
 

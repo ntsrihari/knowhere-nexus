@@ -17,6 +17,11 @@ const (
 	CodeTooLarge         = "request_too_large"
 	CodeValidation       = "validation_failed"
 	CodeInternal         = "internal"
+	CodeReauthRequired   = "reauth_required"
+	CodeRateLimited      = "rate_limited"
+	CodeUpstream         = "upstream_unavailable"
+	CodeNotConfigured    = "not_configured"
+	CodeConflict         = "conflict"
 )
 
 type errorBody struct {

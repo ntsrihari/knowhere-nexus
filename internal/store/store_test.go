@@ -113,15 +113,15 @@ func TestMigrationSequenceEnforced(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	bad := append(append([]Migration{}, Migrations...), Migration{Version: 5, Name: "gap", SQL: "SELECT 1"})
+	bad := append(append([]Migration{}, Migrations...), Migration{Version: len(Migrations) + 2, Name: "gap", SQL: "SELECT 1"})
 	if err := migrate(ctx, db.DB, bad); err == nil {
 		t.Fatal("gap in migration sequence accepted")
 	}
-	failing := append(append([]Migration{}, Migrations...), Migration{Version: 2, Name: "broken", SQL: "NOT SQL"})
+	failing := append(append([]Migration{}, Migrations...), Migration{Version: len(Migrations) + 1, Name: "broken", SQL: "NOT SQL"})
 	if err := migrate(ctx, db.DB, failing); err == nil {
 		t.Fatal("broken migration accepted")
 	}
-	if v, _ := Version(ctx, db.DB); v != 1 {
+	if v, _ := Version(ctx, db.DB); v != len(Migrations) {
 		t.Fatalf("failed migration was recorded: version %d", v)
 	}
 }

@@ -19,10 +19,21 @@ type Secrets struct {
 	// SessionEncryptionKey is a 32-byte key. M1 loads and validates it; it is
 	// first used by refresh-token rotation (R-14) in M2.
 	SessionEncryptionKey Secret
+	// SigningKey is the Ed25519 seed (32 bytes) for service and delegation
+	// tokens (R-03). Optional until services are configured.
+	SigningKey Secret
+	// JellyfinAdminKey is a dedicated Jellyfin API key used only by the admin
+	// broker (R-10). Optional.
+	JellyfinAdminKey Secret
+	// Integrations holds downstream API keys by integration name.
+	Integrations map[string]Secret
 }
 
 type fileShape struct {
-	SessionEncryptionKey string `yaml:"sessionEncryptionKey"`
+	SessionEncryptionKey string            `yaml:"sessionEncryptionKey"`
+	SigningKey           string            `yaml:"signingKey"`
+	JellyfinAdminKey     string            `yaml:"jellyfinAdminKey"`
+	Integrations         map[string]string `yaml:"integrations"`
 }
 
 // Load reads the secrets file at path. It refuses files that are not regular
@@ -86,9 +97,25 @@ func parse(data []byte) (*Secrets, error) {
 	if err != nil || len(key) != 32 {
 		return nil, errors.New("secrets file: sessionEncryptionKey must be exactly 32 bytes, base64-encoded")
 	}
-	s := &Secrets{SessionEncryptionKey: New(key)}
+	s := &Secrets{SessionEncryptionKey: New(key), Integrations: map[string]Secret{}}
 	for i := range key {
 		key[i] = 0
+	}
+	if raw.SigningKey != "" {
+		seed, err := base64.StdEncoding.DecodeString(raw.SigningKey)
+		if err != nil || len(seed) != 32 {
+			return nil, errors.New("secrets file: signingKey must be a 32-byte Ed25519 seed, base64-encoded")
+		}
+		s.SigningKey = New(seed)
+	}
+	if raw.JellyfinAdminKey != "" {
+		s.JellyfinAdminKey = New([]byte(raw.JellyfinAdminKey))
+	}
+	for name, v := range raw.Integrations {
+		if v == "" {
+			return nil, fmt.Errorf("secrets file: integrations.%s is empty", name)
+		}
+		s.Integrations[name] = New([]byte(v))
 	}
 	return s, nil
 }
