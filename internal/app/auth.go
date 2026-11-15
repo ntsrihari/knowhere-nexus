@@ -124,6 +124,12 @@ func csrf(origin string) httpx.Middleware {
 				next.ServeHTTP(w, r)
 				return
 			}
+			// The service token endpoint authenticates with a signed client
+			// assertion, not cookies; CSRF does not apply when none are sent.
+			if r.URL.Path == "/api/v1/service/token" && r.Header.Get("Cookie") == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
 			ok := r.Header.Get(csrfHeader) == "1"
 			if o := r.Header.Get("Origin"); o != "" {
 				ok = ok && o == origin

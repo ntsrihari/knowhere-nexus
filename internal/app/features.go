@@ -42,6 +42,7 @@ func (a *App) registerFeatureRoutes() {
 	R("/api/v1/themes/household/set", authz.AdminFresh, put, http.HandlerFunc(a.handleSetHouseholdTheme))
 	R("/api/v1/themes/effective", authz.User, get, http.HandlerFunc(a.handleEffectiveTheme))
 	a.registerIntegrationRoutes()
+	a.registerServiceRoutes()
 }
 
 // widgetHandler resolves the widget at request time.

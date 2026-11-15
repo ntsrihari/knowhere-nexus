@@ -63,6 +63,8 @@ type App struct {
 	now       func() time.Time
 	intOnce   sync.Once
 	integ     *integrations
+	tokOnce   sync.Once
+	tok       *tokenKit
 }
 
 // Options adjust construction (tests use them).
