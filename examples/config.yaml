@@ -5,18 +5,20 @@
 # a private Docker network (R-15).
 listen: 0.0.0.0:8480
 
-# The exact origin users load Nexus from (https; http only for localhost).
+# The exact origin users load Nexus from (https; http only for loopback).
 publicOrigin: https://knowhere.example.ts.net
 
-# Caddy's address(es) on the private network, single hosts only. Used from M2
-# for client-IP and identity-header trust (R-15).
+# Caddy's address(es) on the private network, single hosts only (R-15).
 trustedProxies:
   - 172.30.0.2
+
+# Reject clients outside Tailscale address ranges (default true; A-11).
+requireTailnet: true
 
 # Writable data directory (mode 0700, owned by the Nexus user).
 dataDir: /var/lib/nexus
 
-# Launcher catalog (knowhere.catalog 0.1.0). Missing or invalid → empty catalog.
+# Launcher catalog (knowhere.catalog 0.1.0). Missing or invalid -> empty catalog.
 catalogPath: /etc/nexus/catalog.yaml
 
 # Secrets file: mode 0600 or 0400, owned by the Nexus user (UID 65532 in the image).
@@ -24,3 +26,37 @@ secretsFile: /etc/nexus/secrets.yaml
 
 # debug | info | warn | error
 logLevel: info
+
+# Jellyfin (sign-in). Container name from knowhere-homelab-archive.
+jellyfin:
+  url: http://jellyfin:8096
+
+# Read-only Docker socket proxy (CONTAINERS=1, POST=0). Optional.
+docker:
+  url: http://nexus-socket-proxy:2375
+
+# Mounts the storage widget reports. Nexus only sees a mount if it is visible
+# inside its container; otherwise it is reported as unavailable. No host mounts
+# are added by Nexus. /mnt/internal-hdd is always excluded.
+storage:
+  mounts:
+    - {label: Media, path: /mnt/media}
+    - {label: Photos, path: /mnt/immich}
+
+# Optional integrations; API keys go in the secrets file under integrations.<name>.
+integrations:
+  immich: {url: http://immich_server:2283}
+  pihole: {url: http://pihole:80}
+  qbittorrent: {url: http://qbittorrent:8080}
+  radarr: {url: http://radarr:7878}
+  sonarr: {url: http://sonarr:8989}
+  prowlarr: {url: http://prowlarr:9696}
+  jellyseerr: {url: http://jellyseerr:5055}
+
+# Authorized reverse-proxy routes (A-02, R-06); each needs owner approval.
+routes: []
+#  - {id: store, url: /store/, authMode: nexus, audience: collector, approvedBy: owner, approvedOn: 2026-11-15}
+
+# Service identities for service tokens (R-03).
+services: []
+#  - {id: collector, publicKey: <base64 Ed25519 public key>, scopes: [catalog:publish]}

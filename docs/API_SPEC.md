@@ -3,6 +3,18 @@
 Revision 3 (14 Nov 2026), draft. Revision 3: cookie names and CSRF (R-16), refresh concurrency (R-14), no Jellyfin token retention (R-10), versioned contracts (CONTRACTS.md), trusted proxy rules (R-15). Tags: **[OWNER]**, **[SPEC]**, **[REC]**, **[BLOCKER]**/**[LATER]** (see DECISIONS.md).
 **Phase** is shown per endpoint. Anything marked *Out of scope* must not be implemented.
 
+## Implementation notes (revision 4, after M2–M6)
+These are where the implementation differs from or adds to the draft below. The code and its route-table test (`TestRouteTable`) are authoritative.
+- **Quick Connect polling is `POST /api/v1/auth/quickconnect/{pollId}`**, because a successful poll creates a session.
+- **Setting the household theme is `PUT /api/v1/themes/household/set`** (admin!). `GET /api/v1/themes/household` stays readable by users. Each path has exactly one role.
+- **Added:**
+  - `GET|PUT /api/v1/me/desktop-layout`;
+  - `GET /api/v1/notifications?since=` (admin-only events filtered);
+  - `GET /api/v1/admin/analytics?days=`;
+  - `GET /api/v1/admin/widgets/indexers`;
+  - `GET /api/v1/admin/services` and `/api/v1/admin/services/{id}/enable`.
+- **Service token endpoint:** `POST /api/v1/service/token` is exempt from the CSRF header only when the request carries no cookies.
+
 ## 0. Conventions [REC P-15 unless marked]
 - **Base and format:** base `/api/v1`; JSON; RFC 3339 UTC times; bytes as integers.
 - **Browser credentials [OWNER A-10; REC R-01]:**

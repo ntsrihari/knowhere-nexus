@@ -141,6 +141,18 @@ M1 builds the base every later milestone relies on. **It has no authentication, 
 
 ---
 
+## Delivery status after M1 (owner authorization of 15 Nov 2026)
+Implemented on `feat/m2-auth`; each item has automated tests. Detail is in DELIVERY_STATUS.md.
+- ✅ M2: Jellyfin password and Quick Connect sign-in (token discarded, Q-01); sessions with rotation, 20 s grace, reuse revocation, 7-day cap (Q-04); 12-hour admin window (Q-02); revocation; hash-chained audit; CSRF and cookies (R-16); trusted proxy and tailnet boundary; Tailscale identity recorded only (Q-07); rate limits.
+- ✅ M3: system, storage (unavailable state when Nexus can't see a mount; no host mounts added), services and container health; SSE live updates; failure isolation (R-09).
+- ✅ M4: launcher from the server catalog with authorized-route links; audited catalog reload.
+- ✅ M5: household and per-user themes (S-15) with a Material 3 runtime; home layout preferences.
+- ✅ Phase 2 Nexus side: service tokens, JWKS, forward-auth delegation, Collector catalog publish.
+- ✅ Phase 3 Nexus side: Milano token exchange, Jellyfin admin broker (now playing, tasks).
+- ✅ Phase 4: Jellyseerr (requests attributed per user), Radarr, Sonarr, Prowlarr, qBittorrent, Immich, Pi-hole, notifications feed.
+- ✅ Phase 5 Nexus side: desktop window mode, watch statistics and analytics, responsive phone and TV layouts with D-pad navigation.
+- ⛔ Not implemented, by decision: Docker writes, host power and SMART, Collector deploy execution (A-03, A-04, D-16 to D-18).
+
 ## Later phases
 ### Phase 2 — Collector support
 - [ ] T-7.1 Signing keys, JWKS, rotation
